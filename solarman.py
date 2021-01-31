@@ -1,5 +1,5 @@
 import argparse
-from datetime import datetime, date
+from datetime import date
 from getpass import getpass
 import pandas as pd
 import sys
@@ -15,11 +15,11 @@ def get_config():
                         help='Solarman account username')
     parser.add_argument('-s', '--start-date',
                         required=True,
-                        type=lambda s: datetime.strptime(s, '%Y-%m-%d'),
+                        type=lambda s: date.fromisoformat(s),
                         help="Start date in format % Y-%m-%d, eg: 2020-01-25")
     parser.add_argument('-e', '--end-date',
-                        type=lambda s: datetime.strptime(s, '%Y-%m-%d'),
-                        default=datetime.today(),
+                        type=lambda s: date.fromisoformat(s),
+                        default=date.today(),
                         help=("End date in format % Y-%m-%d, "
                               "eg: 2020-01-25, default=today"))
     parser.add_argument('-o', '--output',
@@ -80,7 +80,7 @@ async def get_pv_data(token, year, month):
     }
     params = {'year': f'{year}', 'month': f'{month}'}
 
-    data = '{}'
+    data = '{}'  # for some reason it is required
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -98,8 +98,9 @@ async def main():
     token = await get_token(username, clear_text_pwd, org_id)
 
     # Finally we can download data
-    end_date = datetime.today()
-    dates_range = pd.date_range(start_date, end_date, freq='MS').tolist()
+    dates_range = pd.date_range(
+        start_date.replace(day=1),
+        end_date, freq='MS').tolist()
     data = await asyncio.gather(
         *(get_pv_data(token, dt.year, dt.month) for dt in dates_range)
 
@@ -115,6 +116,8 @@ async def main():
                 "full_power_hours": daily_data["fullPowerHoursDay"]
             })
     df = pd.DataFrame(df_data)
+    df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+    df = df.sort_values(by=['date'])
     res = df.to_csv(output, index=False)
     if res:
         print(res)
